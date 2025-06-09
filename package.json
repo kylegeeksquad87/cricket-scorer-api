@@ -1,0 +1,14 @@
+{
+  "name": "cricket-scorer-api",
+  "version": "1.0.0",
+  "description": "Express API with CRUD operations on SQLite3, Docker-ready.",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.6"
+  }
+}
