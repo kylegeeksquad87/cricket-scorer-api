@@ -1,7 +1,7 @@
 {
   "name": "cricket-scorer-pro-api",
   "version": "1.0.0",
-  "description": "Backend API for Cricket Scorer Pro",
+  "description": "Backend API for Cricket Scorer Pro App",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
