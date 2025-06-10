@@ -11,9 +11,9 @@ const PORT = process.env.PORT || 3001;
 // --- PostgreSQL Connection Pool ---
 const pool = new Pool({
   user: process.env.PGUSER || 'postgres',
-  host: process.env.PGHOST || 'localhost',
+  host: process.env.PGHOST || 'cricket-scorer-461401:us-east1:cricket-scorer-pro-db',
   database: process.env.PGDATABASE || 'cricket_app_db',
-  password: process.env.PGPASSWORD || 'password', // Ensure this is secure in production
+  password: process.env.PGPASSWORD || 'admin87', // Ensure this is secure in production
   port: parseInt(process.env.PGPORT || '5432', 10),
 });
 
