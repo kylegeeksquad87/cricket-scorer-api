@@ -1,4 +1,3 @@
-
 // server.js (Create this file in a new backend project directory)
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
@@ -6,7 +5,7 @@ const cors = require('cors');
 const path = require('path');
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3001;
 const DB_PATH = path.join(__dirname, 'cricket_app.db');
 
 // --- Database Setup ---
@@ -98,17 +97,110 @@ function initializeDbSchema() {
 
     // Seed initial admin user if not exists
     db.get("SELECT * FROM users WHERE username = 'admin'", (err, row) => {
+      if (err) { console.error("Error checking for admin user:", err); return; }
       if (!row) {
         const adminId = generateId();
         // IMPORTANT: Never store plain text passwords in a real app. Use bcrypt or similar.
         db.run("INSERT INTO users (id, username, password, role, email) VALUES (?, ?, ?, ?, ?)",
-          [adminId, 'admin', 'password', 'ADMIN', 'admin@example.com']);
-        console.log("Default admin user created.");
+          [adminId, 'admin', 'password', 'ADMIN', 'admin@example.com'], (errInsert) => {
+            if (errInsert) console.error("Error inserting admin user:", errInsert);
+            else console.log("Default admin user created.");
+          });
       }
     });
     console.log("Database schema checked/initialized.");
+    seedSampleData();
   });
 }
+
+function seedSampleData() {
+    db.get("SELECT id FROM leagues WHERE id = 'l1'", (err, row) => {
+        if (err) {
+            console.error("Error checking for sample data:", err.message);
+            return;
+        }
+        if (row) {
+            console.log("Sample data already exists. Skipping seeding.");
+            return;
+        }
+
+        console.log("Seeding sample data...");
+
+        const sampleLeagues = [
+            { id: 'l1', name: 'TATA IPL 2024', location: 'India', startDate: '2024-03-22T00:00:00Z', endDate: '2024-05-26T00:00:00Z' },
+            { id: 'l2', name: 'Local Club Championship', location: 'City Grounds', startDate: '2024-07-01T00:00:00Z', endDate: '2024-08-15T00:00:00Z' },
+        ];
+
+        const samplePlayers = [
+            { id: 'p_hardik', firstName: 'Hardik', lastName: 'Pandya', email: 'hardik.p@example.com', profilePictureUrl: `https://i.pravatar.cc/150?u=p_hardik` },
+            { id: 'p_rohit', firstName: 'Rohit', lastName: 'Sharma', email: 'rohit.s@example.com', profilePictureUrl: `https://i.pravatar.cc/150?u=p_rohit` },
+            { id: 'p_bumrah', firstName: 'Jasprit', lastName: 'Bumrah', email: 'jasprit.b@example.com', profilePictureUrl: `https://i.pravatar.cc/150?u=p_bumrah` },
+            { id: 'p_ruturaj', firstName: 'Ruturaj', lastName: 'Gaikwad', email: 'rutu.g@example.com', profilePictureUrl: `https://i.pravatar.cc/150?u=p_ruturaj` },
+            { id: 'p_msd', firstName: 'MS', lastName: 'Dhoni', email: 'ms.dhoni@example.com', profilePictureUrl: `https://i.pravatar.cc/150?u=p_msd` },
+            { id: 'p_faf', firstName: 'Faf', lastName: 'du Plessis', email: 'faf.dp@example.com', profilePictureUrl: `https://i.pravatar.cc/150?u=p_faf` },
+            { id: 'p_kohli', firstName: 'Virat', lastName: 'Kohli', email: 'virat.k@example.com', profilePictureUrl: `https://i.pravatar.cc/150?u=p_kohli` },
+            { id: 'p_local1', firstName: 'Raj', lastName: 'Patel', email: 'raj.patel@example.com', profilePictureUrl: `https://i.pravatar.cc/150?u=p_local1` },
+            { id: 'p_local2', firstName: 'Priya', lastName: 'Singh', email: 'priya.singh@example.com', profilePictureUrl: `https://i.pravatar.cc/150?u=p_local2` },
+        ];
+
+        const sampleTeams = [
+            { id: 't_mi', name: 'Mumbai Indians', leagueId: 'l1', captainId: 'p_hardik', logoUrl: 'https://picsum.photos/seed/t_mi/200/150' },
+            { id: 't_csk', name: 'Chennai Super Kings', leagueId: 'l1', captainId: 'p_ruturaj', logoUrl: 'https://picsum.photos/seed/t_csk/200/150' },
+            { id: 't_rcb', name: 'Royal Challengers Bengaluru', leagueId: 'l1', captainId: 'p_faf', logoUrl: 'https://picsum.photos/seed/t_rcb/200/150' },
+            { id: 't_local_a', name: 'City Strikers', leagueId: 'l2', captainId: 'p_local1', logoUrl: 'https://picsum.photos/seed/t_local_a/200/150' },
+            { id: 't_local_b', name: 'Ground Blasters', leagueId: 'l2', captainId: 'p_local2', logoUrl: 'https://picsum.photos/seed/t_local_b/200/150' },
+        ];
+
+        const samplePlayerTeams = [
+            { playerId: 'p_hardik', teamId: 't_mi' }, { playerId: 'p_rohit', teamId: 't_mi' }, { playerId: 'p_bumrah', teamId: 't_mi' },
+            { playerId: 'p_ruturaj', teamId: 't_csk' }, { playerId: 'p_msd', teamId: 't_csk' },
+            { playerId: 'p_faf', teamId: 't_rcb' }, { playerId: 'p_kohli', teamId: 't_rcb' },
+            { playerId: 'p_local1', teamId: 't_local_a' }, { playerId: 'p_local2', teamId: 't_local_b' },
+            { playerId: 'p_rohit', teamId: 't_local_a' }, // Rohit also plays for a local team
+        ];
+        
+        const now = new Date();
+        const sampleMatches = [
+            { id: 'm1', leagueId: 'l1', teamAId: 't_mi', teamBId: 't_csk', dateTime: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString(), venue: 'Wankhede Stadium, Mumbai', overs: 20, status: 'Scheduled' },
+            { id: 'm2', leagueId: 'l1', teamAId: 't_rcb', teamBId: 't_mi', dateTime: new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString(), venue: 'M. Chinnaswamy Stadium, Bengaluru', overs: 20, status: 'Scheduled' },
+            { id: 'm3', leagueId: 'l2', teamAId: 't_local_a', teamBId: 't_local_b', dateTime: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(), venue: 'City Ground A', overs: 15, status: 'Scheduled' },
+            { id: 'm4', leagueId: 'l1', teamAId: 't_csk', teamBId: 't_rcb', dateTime: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString(), venue: 'MA Chidambaram Stadium, Chennai', overs: 20, status: 'Completed', result: 'CSK won by 6 wickets', tossWonByTeamId: 't_rcb', choseTo: 'Bat', scorecardId: 'sc_m4' },
+        ];
+         const sampleScorecards = [
+            { id: 'sc_m4', matchId: 'm4', innings1: JSON.stringify({ battingTeamId: 't_rcb', bowlingTeamId: 't_csk', score: 173, wickets: 6, oversPlayed: 20.0, balls: [{over:0, ballInOver:1,bowlerId:'p_some_csk_bowler', batsmanId:'p_faf', nonStrikerId:'p_kohli', runsScored:1, extras:{}}] }), innings2: JSON.stringify({ battingTeamId: 't_csk', bowlingTeamId: 't_rcb', score: 176, wickets: 4, oversPlayed: 18.4, balls: [{over:0,ballInOver:1,bowlerId:'p_some_rcb_bowler',batsmanId:'p_ruturaj',nonStrikerId:'p_some_csk_player2',runsScored:4,extras:{}}] }) }
+        ];
+
+
+        db.serialize(() => {
+            const leagueStmt = db.prepare("INSERT INTO leagues (id, name, location, startDate, endDate) VALUES (?, ?, ?, ?, ?)");
+            for (const league of sampleLeagues) leagueStmt.run(league.id, league.name, league.location, league.startDate, league.endDate);
+            leagueStmt.finalize();
+
+            const playerStmt = db.prepare("INSERT INTO players (id, firstName, lastName, email, profilePictureUrl) VALUES (?, ?, ?, ?, ?)");
+            for (const player of samplePlayers) playerStmt.run(player.id, player.firstName, player.lastName, player.email, player.profilePictureUrl);
+            playerStmt.finalize();
+
+            const teamStmt = db.prepare("INSERT INTO teams (id, name, leagueId, captainId, logoUrl) VALUES (?, ?, ?, ?, ?)");
+            for (const team of sampleTeams) teamStmt.run(team.id, team.name, team.leagueId, team.captainId, team.logoUrl);
+            teamStmt.finalize();
+
+            const playerTeamStmt = db.prepare("INSERT INTO player_teams (playerId, teamId) VALUES (?, ?)");
+            for (const pt of samplePlayerTeams) playerTeamStmt.run(pt.playerId, pt.teamId);
+            playerTeamStmt.finalize();
+            
+            const matchStmt = db.prepare("INSERT INTO matches (id, leagueId, teamAId, teamBId, dateTime, venue, overs, status, result, tossWonByTeamId, choseTo, scorecardId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            for (const match of sampleMatches) matchStmt.run(match.id, match.leagueId, match.teamAId, match.teamBId, match.dateTime, match.venue, match.overs, match.status, match.result, match.tossWonByTeamId, match.choseTo, match.scorecardId);
+            matchStmt.finalize();
+
+            const scorecardStmt = db.prepare("INSERT INTO scorecards (id, matchId, innings1, innings2) VALUES (?, ?, ?, ?)");
+            for (const sc of sampleScorecards) scorecardStmt.run(sc.id, sc.matchId, sc.innings1, sc.innings2);
+            scorecardStmt.finalize();
+
+            console.log("Sample data seeded successfully.");
+        });
+    });
+}
+
 
 // --- Middleware ---
 app.use(cors());
@@ -313,19 +405,19 @@ app.get('/api/players', (req, res) => {
 });
 
 app.post('/api/players', (req, res) => { 
-    const { firstName, lastName, email, profilePictureUrl, teamId } = req.body;
+    const { firstName, lastName, email, profilePictureUrl, initialTeamId } = req.body; // Changed from teamId
     if (!firstName || !lastName) return res.status(400).json({ error: "First and last name are required" });
     const newPlayerId = generateId();
     db.run("INSERT INTO players (id, firstName, lastName, email, profilePictureUrl) VALUES (?, ?, ?, ?, ?)",
         [newPlayerId, firstName, lastName, email || null, profilePictureUrl || null],
         function(err) {
             if (err) return res.status(500).json({ error: err.message });
-            if (teamId) {
-                db.run("INSERT INTO player_teams (playerId, teamId) VALUES (?, ?)", [newPlayerId, teamId], (err_pt) => {
+            if (initialTeamId) {
+                db.run("INSERT INTO player_teams (playerId, teamId) VALUES (?, ?)", [newPlayerId, initialTeamId], (err_pt) => {
                     if (err_pt) console.error("Error assigning player to team:", err_pt.message);
                 });
             }
-            res.status(201).json({ id: newPlayerId, firstName, lastName, email, profilePictureUrl, teamIds: teamId ? [teamId] : [] });
+            res.status(201).json({ id: newPlayerId, firstName, lastName, email, profilePictureUrl, teamIds: initialTeamId ? [initialTeamId] : [] });
         }
     );
 });
@@ -428,16 +520,21 @@ app.get('/api/matches/:id', (req, res) => {
 });
 
 app.post('/api/matches', (req, res) => { 
-    const { leagueId, teamAId, teamBId, dateTime, venue, overs, status } = req.body;
+    const { leagueId, teamAId, teamBId, dateTime, venue, overs, status, tossWonByTeamId, choseTo, umpire1, umpire2, result } = req.body;
     if (!leagueId || !teamAId || !teamBId || !dateTime || !venue || overs === undefined) {
         return res.status(400).json({ error: "Missing required fields for match" });
     }
     const newMatch = { 
         id: generateId(), leagueId, teamAId, teamBId, dateTime, venue, 
-        overs: parseInt(overs, 10), status: status || 'Scheduled' 
+        overs: parseInt(overs, 10), status: status || 'Scheduled',
+        tossWonByTeamId: tossWonByTeamId || null,
+        choseTo: choseTo || null,
+        umpire1: umpire1 || null,
+        umpire2: umpire2 || null,
+        result: result || null
     };
-    db.run("INSERT INTO matches (id, leagueId, teamAId, teamBId, dateTime, venue, overs, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        [newMatch.id, newMatch.leagueId, newMatch.teamAId, newMatch.teamBId, newMatch.dateTime, newMatch.venue, newMatch.overs, newMatch.status],
+    db.run("INSERT INTO matches (id, leagueId, teamAId, teamBId, dateTime, venue, overs, status, tossWonByTeamId, choseTo, umpire1, umpire2, result) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [newMatch.id, newMatch.leagueId, newMatch.teamAId, newMatch.teamBId, newMatch.dateTime, newMatch.venue, newMatch.overs, newMatch.status, newMatch.tossWonByTeamId, newMatch.choseTo, newMatch.umpire1, newMatch.umpire2, newMatch.result],
         function(err) {
             if (err) return res.status(500).json({ error: err.message });
             res.status(201).json(newMatch);
