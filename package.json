@@ -2,15 +2,16 @@
   "name": "cricket-scorer-pro-api",
   "version": "1.0.0",
   "description": "Backend API for Cricket Scorer Pro App",
-  "main": "server.js",
+  "main": "server_pg.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node server_pg.js",
     "dev": "nodemon server.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.17.1",
-    "sqlite3": "^5.0.2"
+    "sqlite3": "^5.0.2",
+    "pg": "^8.7.1"
   },
   "devDependencies": {
     "nodemon": "^2.0.15"
