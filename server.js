@@ -1,4 +1,3 @@
-
 // server.js (Create this file in a new backend project directory)
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
@@ -16,13 +15,15 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
     throw err;
   }
   console.log('Connected to the SQLite database.');
-  initializeDbSchema();
+  db.run(`PRAGMA foreign_keys = ON;`, (fkErr) => { // Enable foreign key constraints
+    if (fkErr) console.error("Error enabling foreign keys:", fkErr.message);
+    else console.log("Foreign key constraints enabled.");
+    initializeDbSchema();
+  });
 });
 
 function initializeDbSchema() {
   db.serialize(() => {
-    db.run(`PRAGMA foreign_keys = ON;`); // Enable foreign key constraints
-
     db.run(`CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
@@ -85,7 +86,7 @@ function initializeDbSchema() {
       FOREIGN KEY (leagueId) REFERENCES leagues(id) ON DELETE CASCADE,
       FOREIGN KEY (teamAId) REFERENCES teams(id) ON DELETE CASCADE,
       FOREIGN KEY (teamBId) REFERENCES teams(id) ON DELETE CASCADE,
-      FOREIGN KEY (scorecardId) REFERENCES scorecards(id) ON DELETE CASCADE 
+      FOREIGN KEY (scorecardId) REFERENCES scorecards(id) ON DELETE SET NULL 
     )`);
     
     db.run(`CREATE TABLE IF NOT EXISTS scorecards (
@@ -98,12 +99,15 @@ function initializeDbSchema() {
 
     // Seed initial admin user if not exists
     db.get("SELECT * FROM users WHERE username = 'admin'", (err, row) => {
-      if (!row) {
+      if (err) console.error("Error checking for admin user:", err.message);
+      else if (!row) {
         const adminId = generateId();
         // IMPORTANT: Never store plain text passwords in a real app. Use bcrypt or similar.
         db.run("INSERT INTO users (id, username, password, role, email) VALUES (?, ?, ?, ?, ?)",
-          [adminId, 'admin', 'password', 'ADMIN', 'admin@example.com']);
-        console.log("Default admin user created.");
+          [adminId, 'admin', 'password', 'ADMIN', 'admin@example.com'], (seedErr) => {
+            if (seedErr) console.error("Error seeding admin user:", seedErr.message);
+            else console.log("Default admin user created.");
+          });
       }
     });
     console.log("Database schema checked/initialized.");
@@ -350,6 +354,7 @@ app.put('/api/players/:id', (req, res) => {
                     return res.status(404).json({ error: "Player not found" });
                 }
 
+                // Update player_teams associations
                 db.run("DELETE FROM player_teams WHERE playerId = ?", [id], (errDel) => {
                     if (errDel) {
                         db.run("ROLLBACK;");
@@ -358,15 +363,19 @@ app.put('/api/players/:id', (req, res) => {
 
                     if (teamIds && teamIds.length > 0) {
                         const stmt = db.prepare("INSERT INTO player_teams (playerId, teamId) VALUES (?, ?);");
+                        let insertError = null;
                         teamIds.forEach(teamId => {
                             stmt.run(id, teamId, (errIns) => {
-                                if(errIns) console.error(`Error adding player ${id} to team ${teamId}: ${errIns.message}`);
+                                if(errIns) {
+                                    console.error(`Error adding player ${id} to team ${teamId}: ${errIns.message}`);
+                                    insertError = errIns; // Capture first error
+                                }
                             });
                         });
                         stmt.finalize((errFin) => {
-                            if (errFin) {
+                            if (errFin || insertError) {
                                 db.run("ROLLBACK;");
-                                return res.status(500).json({ error: `Finalizing team assignments failed: ${errFin.message}` });
+                                return res.status(500).json({ error: `Finalizing team assignments failed: ${errFin?.message || insertError?.message}` });
                             }
                             db.run("COMMIT;", (commitErr) => {
                                 if (commitErr) return res.status(500).json({ error: `Commit failed: ${commitErr.message}` });
@@ -377,13 +386,13 @@ app.put('/api/players/:id', (req, res) => {
                                 });
                             });
                         });
-                    } else { 
+                    } else { // No teamIds provided, so just commit player details update
                         db.run("COMMIT;", (commitErr) => {
                             if (commitErr) return res.status(500).json({ error: `Commit failed: ${commitErr.message}` });
                             db.get("SELECT * FROM players WHERE id = ?", [id], (errGet, row) => {
                                  if (errGet) return res.status(500).json({ error: errGet.message });
                                  if(!row) return res.status(404).json({ error: "Updated player not found."})
-                                 res.json({ ...row, teamIds: [] });
+                                 res.json({ ...row, teamIds: [] }); // Return with empty teamIds
                             });
                         });
                     }
@@ -447,6 +456,7 @@ app.post('/api/matches', (req, res) => {
 
 app.put('/api/matches/:id', (req, res) => { 
     const matchId = req.params.id;
+    // Extract all possible fields that can be updated from Match type
     const { leagueId, teamAId, teamBId, dateTime, venue, overs, status, tossWonByTeamId, choseTo, umpire1, umpire2, result, scorecardId } = req.body;
     
     const fieldsToUpdate = {};
@@ -457,17 +467,21 @@ app.put('/api/matches/:id', (req, res) => {
     if (venue !== undefined) fieldsToUpdate.venue = venue;
     if (overs !== undefined) fieldsToUpdate.overs = parseInt(overs, 10);
     if (status !== undefined) fieldsToUpdate.status = status;
-    fieldsToUpdate.tossWonByTeamId = tossWonByTeamId === undefined ? null : tossWonByTeamId;
-    fieldsToUpdate.choseTo = choseTo === undefined ? null : choseTo;
-    fieldsToUpdate.umpire1 = umpire1 === undefined ? null : umpire1;
-    fieldsToUpdate.umpire2 = umpire2 === undefined ? null : umpire2;
-    fieldsToUpdate.result = result === undefined ? null : result;
-    fieldsToUpdate.scorecardId = scorecardId === undefined ? null : scorecardId;
+    // Handle nullable fields correctly: allow setting to null or a value
+    fieldsToUpdate.tossWonByTeamId = tossWonByTeamId === undefined ? undefined : (tossWonByTeamId || null);
+    fieldsToUpdate.choseTo = choseTo === undefined ? undefined : (choseTo || null);
+    fieldsToUpdate.umpire1 = umpire1 === undefined ? undefined : (umpire1 || null);
+    fieldsToUpdate.umpire2 = umpire2 === undefined ? undefined : (umpire2 || null);
+    fieldsToUpdate.result = result === undefined ? undefined : (result || null);
+    fieldsToUpdate.scorecardId = scorecardId === undefined ? undefined : (scorecardId || null);
 
-    const setClauses = Object.keys(fieldsToUpdate).map(key => `${key} = ?`).join(", ");
-    const params = [...Object.values(fieldsToUpdate), matchId];
+    // Filter out undefined fields so they are not included in the SET clause
+    const validFieldsToUpdate = Object.fromEntries(Object.entries(fieldsToUpdate).filter(([_, v]) => v !== undefined));
 
-    if (Object.keys(fieldsToUpdate).length === 0) return res.status(400).json({error: "No update fields provided"});
+    if (Object.keys(validFieldsToUpdate).length === 0) return res.status(400).json({error: "No update fields provided"});
+    
+    const setClauses = Object.keys(validFieldsToUpdate).map(key => `${key} = ?`).join(", ");
+    const params = [...Object.values(validFieldsToUpdate), matchId];
     
     db.run(`UPDATE matches SET ${setClauses} WHERE id = ?`, params, function(err) {
         if (err) return res.status(500).json({ error: err.message });
@@ -542,14 +556,12 @@ app.put('/api/scorecards/:id', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Backend server running locally on port ${PORT}.`);
-  console.log(`Simulated deployed service URL: https://cricket-scorer-pro-backend-prod.a.run.app`);
-  console.log(`Ensure frontend BASE_API_URL targets: https://cricket-scorer-pro-backend-prod.a.run.app/api`);
 });
 
 process.on('SIGINT', () => {
-    db.close((err) => {
-        if (err) {
-            return console.error(err.message);
+    db.close((errClose) => {
+        if (errClose) {
+            console.error(errClose.message);
         }
         console.log('Closed the database connection.');
         process.exit(0);
