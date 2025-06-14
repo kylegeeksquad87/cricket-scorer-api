@@ -1,3 +1,4 @@
+
 // server.js (Create this file in a new backend project directory)
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
@@ -21,6 +22,9 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
     initializeDbSchema();
   });
 });
+
+// --- Helper ---
+const generateId = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
 function initializeDbSchema() {
   db.serialize(() => {
@@ -101,8 +105,7 @@ function initializeDbSchema() {
     db.get("SELECT * FROM users WHERE username = 'admin'", (err, row) => {
       if (err) console.error("Error checking for admin user:", err.message);
       else if (!row) {
-        const adminId = generateId();
-        // IMPORTANT: Never store plain text passwords in a real app. Use bcrypt or similar.
+        const adminId = 'user_admin_default'; // Fixed ID for admin
         db.run("INSERT INTO users (id, username, password, role, email) VALUES (?, ?, ?, ?, ?)",
           [adminId, 'admin', 'password', 'ADMIN', 'admin@example.com'], (seedErr) => {
             if (seedErr) console.error("Error seeding admin user:", seedErr.message);
@@ -111,8 +114,173 @@ function initializeDbSchema() {
       }
     });
     console.log("Database schema checked/initialized.");
+    seedSampleData(); // Call sample data seeding function
   });
 }
+
+function seedSampleData() {
+    db.serialize(() => {
+        console.log("Starting to seed sample data...");
+
+        // Scorer Users
+        const scorerUsers = [
+            { id: 'user_scorer_fidelity1', username: 'scorer_fidelity1', password: 'password', role: 'SCORER', email: 'sf1@example.com' },
+            { id: 'user_scorer_fidelity2', username: 'scorer_fidelity2', password: 'password', role: 'SCORER', email: 'sf2@example.com' },
+        ];
+        scorerUsers.forEach(user => {
+            db.get("SELECT id FROM users WHERE id = ?", [user.id], (err, row) => {
+                if (err) console.error(`Error checking scorer user ${user.username}:`, err.message);
+                else if (!row) {
+                    db.run("INSERT INTO users (id, username, password, role, email) VALUES (?, ?, ?, ?, ?)",
+                        [user.id, user.username, user.password, user.role, user.email], (seedErr) => {
+                        if (seedErr) console.error(`Error seeding scorer user ${user.username}:`, seedErr.message);
+                        else console.log(`Scorer user ${user.username} created.`);
+                    });
+                }
+            });
+        });
+
+        // Fidelity Cricket League
+        const fidelityLeagueId = 'l_fidelity_cricket';
+        const fidelityLeague = {
+            id: fidelityLeagueId,
+            name: "Fidelity Cricket League",
+            location: "Tech Park Grounds",
+            startDate: new Date().toISOString(),
+            endDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString() // Approx 2 months
+        };
+        db.get("SELECT id FROM leagues WHERE id = ?", [fidelityLeagueId], (err, row) => {
+            if (err) console.error("Error checking Fidelity League:", err.message);
+            else if (!row) {
+                db.run("INSERT INTO leagues (id, name, location, startDate, endDate) VALUES (?, ?, ?, ?, ?)",
+                    [fidelityLeague.id, fidelityLeague.name, fidelityLeague.location, fidelityLeague.startDate, fidelityLeague.endDate], (seedErr) => {
+                    if (seedErr) console.error("Error seeding Fidelity League:", seedErr.message);
+                    else console.log("Fidelity Cricket League created.");
+                });
+            }
+        });
+
+        // Teams: Challengers & Falcons
+        const teamChallengersId = 't_fidelity_challengers';
+        const teamFalconsId = 't_fidelity_falcons';
+        const sampleTeams = [
+            { id: teamChallengersId, name: "Challengers", leagueId: fidelityLeagueId, logoUrl: 'https://picsum.photos/seed/challengers/200/150' },
+            { id: teamFalconsId, name: "Falcons", leagueId: fidelityLeagueId, logoUrl: 'https://picsum.photos/seed/falcons/200/150' },
+        ];
+        sampleTeams.forEach(team => {
+            db.get("SELECT id FROM teams WHERE id = ?", [team.id], (err, row) => {
+                if (err) console.error(`Error checking team ${team.name}:`, err.message);
+                else if (!row) {
+                    db.run("INSERT INTO teams (id, name, leagueId, logoUrl) VALUES (?, ?, ?, ?)",
+                        [team.id, team.name, team.leagueId, team.logoUrl], (seedErr) => {
+                        if (seedErr) console.error(`Error seeding team ${team.name}:`, seedErr.message);
+                        else console.log(`Team ${team.name} created.`);
+                    });
+                }
+            });
+        });
+
+        // Players for Challengers (11)
+        for (let i = 1; i <= 11; i++) {
+            const playerId = `p_challenger_${i}`;
+            const player = {
+                id: playerId,
+                firstName: "Challenger",
+                lastName: `Player ${i}`,
+                email: `cplayer${i}@example.com`
+            };
+            db.get("SELECT id FROM players WHERE id = ?", [playerId], (err, row) => {
+                if (err) console.error(`Error checking player ${player.firstName} ${player.lastName}:`, err.message);
+                else if (!row) {
+                    db.run("INSERT INTO players (id, firstName, lastName, email) VALUES (?, ?, ?, ?)",
+                        [player.id, player.firstName, player.lastName, player.email], (seedErr) => {
+                        if (seedErr) console.error(`Error seeding player ${player.firstName} ${player.lastName}:`, seedErr.message);
+                        else {
+                            // Assign to Challengers team
+                            db.run("INSERT OR IGNORE INTO player_teams (playerId, teamId) VALUES (?, ?)", [player.id, teamChallengersId], ptErr => {
+                                if (ptErr) console.error(`Error assigning ${player.id} to ${teamChallengersId}:`, ptErr.message);
+                                else console.log(`Player ${player.firstName} ${player.lastName} created and assigned to Challengers.`);
+                            });
+                        }
+                    });
+                }
+            });
+        }
+
+        // Players for Falcons (11)
+        for (let i = 1; i <= 11; i++) {
+            const playerId = `p_falcon_${i}`;
+            const player = {
+                id: playerId,
+                firstName: "Falcon",
+                lastName: `Player ${i}`,
+                email: `fplayer${i}@example.com`
+            };
+            db.get("SELECT id FROM players WHERE id = ?", [playerId], (err, row) => {
+                if (err) console.error(`Error checking player ${player.firstName} ${player.lastName}:`, err.message);
+                else if (!row) {
+                    db.run("INSERT INTO players (id, firstName, lastName, email) VALUES (?, ?, ?, ?)",
+                        [player.id, player.firstName, player.lastName, player.email], (seedErr) => {
+                        if (seedErr) console.error(`Error seeding player ${player.firstName} ${player.lastName}:`, seedErr.message);
+                        else {
+                            // Assign to Falcons team
+                            db.run("INSERT OR IGNORE INTO player_teams (playerId, teamId) VALUES (?, ?)", [player.id, teamFalconsId], ptErr => {
+                                if (ptErr) console.error(`Error assigning ${player.id} to ${teamFalconsId}:`, ptErr.message);
+                                else console.log(`Player ${player.firstName} ${player.lastName} created and assigned to Falcons.`);
+                            });
+                        }
+                    });
+                }
+            });
+        }
+        
+        // Captains (pick first player of each team as captain for simplicity)
+        db.run("UPDATE teams SET captainId = ? WHERE id = ?", [`p_challenger_1`, teamChallengersId]);
+        db.run("UPDATE teams SET captainId = ? WHERE id = ?", [`p_falcon_1`, teamFalconsId]);
+
+
+        // Dummy Matches
+        const sampleMatches = [
+            {
+                id: 'm_fidelity_1', leagueId: fidelityLeagueId, teamAId: teamChallengersId, teamBId: teamFalconsId,
+                dateTime: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString(), // Tomorrow
+                venue: "Fidelity Ground 1", overs: 20, status: 'Scheduled'
+            },
+            {
+                id: 'm_fidelity_2', leagueId: fidelityLeagueId, teamAId: teamFalconsId, teamBId: teamChallengersId,
+                dateTime: new Date().toISOString(), // Today (Live)
+                venue: "Fidelity Ground 2", overs: 20, status: 'Live',
+                tossWonByTeamId: teamFalconsId, choseTo: 'Bat'
+            },
+            {
+                id: 'm_fidelity_3', leagueId: fidelityLeagueId, teamAId: teamChallengersId, teamBId: teamFalconsId,
+                dateTime: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // Yesterday
+                venue: "Fidelity Ground 1", overs: 20, status: 'Completed', result: "Challengers won by 5 wickets"
+            }
+        ];
+
+        sampleMatches.forEach(match => {
+            db.get("SELECT id FROM matches WHERE id = ?", [match.id], (err, row) => {
+                if (err) console.error(`Error checking match ${match.id}:`, err.message);
+                else if (!row) {
+                    db.run("INSERT INTO matches (id, leagueId, teamAId, teamBId, dateTime, venue, overs, status, tossWonByTeamId, choseTo, result) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [match.id, match.leagueId, match.teamAId, match.teamBId, match.dateTime, match.venue, match.overs, match.status, match.tossWonByTeamId, match.choseTo, match.result], (seedErr) => {
+                        if (seedErr) console.error(`Error seeding match ${match.id}:`, seedErr.message);
+                        else console.log(`Match ${getTeamNameFromIdSync(match.teamAId, sampleTeams)} vs ${getTeamNameFromIdSync(match.teamBId, sampleTeams)} created.`);
+                    });
+                }
+            });
+        });
+        console.log("Sample data seeding process completed.");
+    });
+}
+
+// Helper for logging match creation (sync for simplicity during seeding)
+function getTeamNameFromIdSync(teamId, teamsArray) {
+    const team = teamsArray.find(t => t.id === teamId);
+    return team ? team.name : 'Unknown Team';
+}
+
 
 // --- Middleware ---
 app.use(cors());
@@ -124,8 +292,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// --- Helper ---
-const generateId = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
 // --- API Routes ---
 
@@ -317,7 +483,7 @@ app.get('/api/players', (req, res) => {
 });
 
 app.post('/api/players', (req, res) => { 
-    const { firstName, lastName, email, profilePictureUrl, teamId } = req.body;
+    const { firstName, lastName, email, profilePictureUrl, teamId } = req.body; // teamId is initialTeamId from frontend
     if (!firstName || !lastName) return res.status(400).json({ error: "First and last name are required" });
     const newPlayerId = generateId();
     db.run("INSERT INTO players (id, firstName, lastName, email, profilePictureUrl) VALUES (?, ?, ?, ?, ?)",
@@ -456,7 +622,6 @@ app.post('/api/matches', (req, res) => {
 
 app.put('/api/matches/:id', (req, res) => { 
     const matchId = req.params.id;
-    // Extract all possible fields that can be updated from Match type
     const { leagueId, teamAId, teamBId, dateTime, venue, overs, status, tossWonByTeamId, choseTo, umpire1, umpire2, result, scorecardId } = req.body;
     
     const fieldsToUpdate = {};
@@ -467,21 +632,24 @@ app.put('/api/matches/:id', (req, res) => {
     if (venue !== undefined) fieldsToUpdate.venue = venue;
     if (overs !== undefined) fieldsToUpdate.overs = parseInt(overs, 10);
     if (status !== undefined) fieldsToUpdate.status = status;
-    // Handle nullable fields correctly: allow setting to null or a value
-    fieldsToUpdate.tossWonByTeamId = tossWonByTeamId === undefined ? undefined : (tossWonByTeamId || null);
-    fieldsToUpdate.choseTo = choseTo === undefined ? undefined : (choseTo || null);
-    fieldsToUpdate.umpire1 = umpire1 === undefined ? undefined : (umpire1 || null);
-    fieldsToUpdate.umpire2 = umpire2 === undefined ? undefined : (umpire2 || null);
-    fieldsToUpdate.result = result === undefined ? undefined : (result || null);
-    fieldsToUpdate.scorecardId = scorecardId === undefined ? undefined : (scorecardId || null);
-
-    // Filter out undefined fields so they are not included in the SET clause
-    const validFieldsToUpdate = Object.fromEntries(Object.entries(fieldsToUpdate).filter(([_, v]) => v !== undefined));
-
-    if (Object.keys(validFieldsToUpdate).length === 0) return res.status(400).json({error: "No update fields provided"});
     
-    const setClauses = Object.keys(validFieldsToUpdate).map(key => `${key} = ?`).join(", ");
-    const params = [...Object.values(validFieldsToUpdate), matchId];
+    // Handle nullable fields correctly: allow setting to null or a value
+    // Only add to fieldsToUpdate if the key is present in req.body
+    if (req.body.hasOwnProperty('tossWonByTeamId')) fieldsToUpdate.tossWonByTeamId = tossWonByTeamId || null;
+    if (req.body.hasOwnProperty('choseTo')) fieldsToUpdate.choseTo = choseTo || null;
+    if (req.body.hasOwnProperty('umpire1')) fieldsToUpdate.umpire1 = umpire1 || null;
+    if (req.body.hasOwnProperty('umpire2')) fieldsToUpdate.umpire2 = umpire2 || null;
+    if (req.body.hasOwnProperty('result')) fieldsToUpdate.result = result || null;
+    if (req.body.hasOwnProperty('scorecardId')) fieldsToUpdate.scorecardId = scorecardId || null;
+
+    if (Object.keys(fieldsToUpdate).length === 0) {
+        // If nothing to update, maybe fetch and return current state or 304 Not Modified.
+        // For simplicity, returning 400.
+        return res.status(400).json({error: "No update fields provided"});
+    }
+    
+    const setClauses = Object.keys(fieldsToUpdate).map(key => `${key} = ?`).join(", ");
+    const params = [...Object.values(fieldsToUpdate), matchId];
     
     db.run(`UPDATE matches SET ${setClauses} WHERE id = ?`, params, function(err) {
         if (err) return res.status(500).json({ error: err.message });
@@ -567,3 +735,4 @@ process.on('SIGINT', () => {
         process.exit(0);
     });
 });
+      
