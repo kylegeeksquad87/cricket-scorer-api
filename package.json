@@ -2,10 +2,10 @@
   "name": "cricket-scorer-pro-api",
   "version": "1.0.0",
   "description": "Backend API for Cricket Scorer Pro",
-  "main": "server.js",
+  "main": "server_g.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node server_g.js",
+    "dev": "nodemon server_g.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
