@@ -1,3 +1,4 @@
+
 // server.js (Create this file in a new backend project directory)
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
@@ -101,8 +102,7 @@ function initializeDbSchema() {
     db.get("SELECT * FROM users WHERE username = 'admin'", (err, row) => {
       if (err) console.error("Error checking for admin user:", err.message);
       else if (!row) {
-        const adminId = generateId();
-        // IMPORTANT: Never store plain text passwords in a real app. Use bcrypt or similar.
+        const adminId = 'user_admin_default'; // Fixed ID for admin
         db.run("INSERT INTO users (id, username, password, role, email) VALUES (?, ?, ?, ?, ?)",
           [adminId, 'admin', 'password', 'ADMIN', 'admin@example.com'], (seedErr) => {
             if (seedErr) console.error("Error seeding admin user:", seedErr.message);
@@ -141,6 +141,82 @@ app.post('/api/login', (req, res) => {
         }
     });
 });
+
+app.post('/api/register', (req, res) => {
+    const { username, password, firstName, lastName, email, profilePictureUrl } = req.body;
+
+    if (!username || !password || !firstName || !lastName) {
+        return res.status(400).json({ error: "Username, password, first name, and last name are required." });
+    }
+
+    db.serialize(() => {
+        db.get("SELECT id FROM users WHERE username = ?", [username], (err, row) => {
+            if (err) return res.status(500).json({ error: `Error checking username: ${err.message}` });
+            if (row) return res.status(409).json({ error: "Username already exists." });
+
+            if (email) {
+                db.get("SELECT id FROM players WHERE email = ?", [email], (errEmail, rowEmail) => {
+                    if (errEmail) return res.status(500).json({ error: `Error checking player email: ${errEmail.message}` });
+                    if (rowEmail) return res.status(409).json({ error: "Email already associated with another player." });
+                    
+                     db.get("SELECT id FROM users WHERE email = ? AND email IS NOT NULL AND email != ''", [email], (errUserEmail, rowUserEmail) => {
+                        if (errUserEmail) return res.status(500).json({ error: `Error checking user email: ${errUserEmail.message}` });
+                        if (rowUserEmail) return res.status(409).json({ error: "Email already associated with another user account." });
+                        
+                        proceedWithRegistration();
+                    });
+                });
+            } else {
+                proceedWithRegistration();
+            }
+        });
+
+        function proceedWithRegistration() {
+            const newPlayerId = generateId(); // This ID will be used for both player and user
+
+            db.run("BEGIN TRANSACTION;", (errBegin) => {
+                if (errBegin) return res.status(500).json({ error: `Transaction start error: ${errBegin.message}` });
+
+                // Create Player entry
+                db.run("INSERT INTO players (id, firstName, lastName, email, profilePictureUrl) VALUES (?, ?, ?, ?, ?)",
+                    [newPlayerId, firstName, lastName, email || null, profilePictureUrl || null],
+                    function (errPlayer) {
+                        if (errPlayer) {
+                            db.run("ROLLBACK;");
+                            return res.status(500).json({ error: `Error creating player: ${errPlayer.message}` });
+                        }
+
+                        // Create User entry (using plain password for mock, hash in real app)
+                        db.run("INSERT INTO users (id, username, password, email, role, profilePictureUrl) VALUES (?, ?, ?, ?, ?, ?)",
+                            [newPlayerId, username, password, email || null, 'PLAYER', profilePictureUrl || null],
+                            function (errUser) {
+                                if (errUser) {
+                                    db.run("ROLLBACK;");
+                                    return res.status(500).json({ error: `Error creating user: ${errUser.message}` });
+                                }
+
+                                db.run("COMMIT;", (errCommit) => {
+                                    if (errCommit) return res.status(500).json({ error: `Transaction commit error: ${errCommit.message}` });
+                                    
+                                    // Return the new user object (similar to login)
+                                    const newUser = {
+                                        id: newPlayerId,
+                                        username: username,
+                                        email: email || null,
+                                        role: 'PLAYER',
+                                        profilePictureUrl: profilePictureUrl || null
+                                    };
+                                    res.status(201).json(newUser);
+                                });
+                            }
+                        );
+                    }
+                );
+            });
+        }
+    });
+});
+
 
 app.get('/api/users/:id', (req, res) => { 
     db.get("SELECT id, username, email, role, profilePictureUrl FROM users WHERE id = ?", [req.params.id], (err, user) => {
@@ -456,7 +532,6 @@ app.post('/api/matches', (req, res) => {
 
 app.put('/api/matches/:id', (req, res) => { 
     const matchId = req.params.id;
-    // Extract all possible fields that can be updated from Match type
     const { leagueId, teamAId, teamBId, dateTime, venue, overs, status, tossWonByTeamId, choseTo, umpire1, umpire2, result, scorecardId } = req.body;
     
     const fieldsToUpdate = {};
@@ -467,21 +542,20 @@ app.put('/api/matches/:id', (req, res) => {
     if (venue !== undefined) fieldsToUpdate.venue = venue;
     if (overs !== undefined) fieldsToUpdate.overs = parseInt(overs, 10);
     if (status !== undefined) fieldsToUpdate.status = status;
-    // Handle nullable fields correctly: allow setting to null or a value
-    fieldsToUpdate.tossWonByTeamId = tossWonByTeamId === undefined ? undefined : (tossWonByTeamId || null);
-    fieldsToUpdate.choseTo = choseTo === undefined ? undefined : (choseTo || null);
-    fieldsToUpdate.umpire1 = umpire1 === undefined ? undefined : (umpire1 || null);
-    fieldsToUpdate.umpire2 = umpire2 === undefined ? undefined : (umpire2 || null);
-    fieldsToUpdate.result = result === undefined ? undefined : (result || null);
-    fieldsToUpdate.scorecardId = scorecardId === undefined ? undefined : (scorecardId || null);
-
-    // Filter out undefined fields so they are not included in the SET clause
-    const validFieldsToUpdate = Object.fromEntries(Object.entries(fieldsToUpdate).filter(([_, v]) => v !== undefined));
-
-    if (Object.keys(validFieldsToUpdate).length === 0) return res.status(400).json({error: "No update fields provided"});
     
-    const setClauses = Object.keys(validFieldsToUpdate).map(key => `${key} = ?`).join(", ");
-    const params = [...Object.values(validFieldsToUpdate), matchId];
+    if (req.body.hasOwnProperty('tossWonByTeamId')) fieldsToUpdate.tossWonByTeamId = tossWonByTeamId || null;
+    if (req.body.hasOwnProperty('choseTo')) fieldsToUpdate.choseTo = choseTo || null;
+    if (req.body.hasOwnProperty('umpire1')) fieldsToUpdate.umpire1 = umpire1 || null;
+    if (req.body.hasOwnProperty('umpire2')) fieldsToUpdate.umpire2 = umpire2 || null;
+    if (req.body.hasOwnProperty('result')) fieldsToUpdate.result = result || null;
+    if (req.body.hasOwnProperty('scorecardId')) fieldsToUpdate.scorecardId = scorecardId || null;
+
+    if (Object.keys(fieldsToUpdate).length === 0) {
+        return res.status(400).json({error: "No update fields provided"});
+    }
+    
+    const setClauses = Object.keys(fieldsToUpdate).map(key => `${key} = ?`).join(", ");
+    const params = [...Object.values(fieldsToUpdate), matchId];
     
     db.run(`UPDATE matches SET ${setClauses} WHERE id = ?`, params, function(err) {
         if (err) return res.status(500).json({ error: err.message });
